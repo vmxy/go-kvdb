@@ -1,0 +1,429 @@
+package model
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"reflect"
+	"regexp"
+	"runtime/debug"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/dgraph-io/badger"
+)
+
+func buildIndexKey(name string, values ...string) string {
+	return fmt.Sprintf("%s-%s", name, strings.Join(values, "_"))
+}
+
+type IndexInfo struct {
+	Name  string
+	Field string
+	Type  string
+}
+type Table[T any] struct {
+	Name   string
+	mdb    *badger.DB
+	idb    *badger.DB
+	indexs map[string]IndexInfo
+}
+
+// 自定义 Logger，只输出 WARN 及以上级别的日志
+type warnLogger struct{}
+
+func (w warnLogger) Errorf(format string, args ...interface{}) {
+	log.Printf("[ERROR] "+format, args...)
+}
+
+func (w warnLogger) Warningf(format string, args ...interface{}) {
+	log.Printf("[WARN] "+format, args...)
+}
+
+func (w warnLogger) Infof(format string, args ...interface{}) {
+	// INFO 级别的日志不输出
+}
+
+func (w warnLogger) Debugf(format string, args ...interface{}) {
+	// DEBUG 级别的日志不输出
+}
+
+func createMasterDB(table string) (*badger.DB, error) {
+	var opts badger.Options
+	path := config.GetHomeDir("kvdb", table)
+	if config.IsDev() {
+		//opts = badger.DefaultOptions("").WithInMemory(true) // 使用内存模式（仅测试）
+	} else {
+		//opts = badger.DefaultOptions(table) //
+	}
+	opts = badger.DefaultOptions(path).WithLogger(warnLogger{}) //
+	db, err := badger.Open(opts)
+	return db, err
+}
+func createIndexDB(table string) (*badger.DB, error) {
+	var opts badger.Options
+	path := config.GetHomeDir("kvdb", table, "index")
+	if config.IsDev() {
+		//opts = badger.DefaultOptions("").WithInMemory(true) // 使用内存模式（仅测试）
+	} else {
+		//opts = badger.DefaultOptions(table + ".index") //
+	}
+	opts = badger.DefaultOptions(path).WithLogger(warnLogger{}) //
+	db, err := badger.Open(opts)
+	return db, err
+}
+
+func NewTable[T any](name string) Table[T] {
+	path := config.GetHomeDir("kvdb", name)
+	os.MkdirAll(path, 075)
+	//fmt.Printf("badger path=%s\r\n", path)
+	mdb, err := createMasterDB(name)
+	if err != nil {
+		log.Fatalf("create kvdb [%s] master error\r\n", name)
+	}
+	idb, err := createIndexDB(name)
+	if err != nil {
+		log.Fatalf("create kvdb [%s] index error\r\n", name)
+	}
+	table := Table[T]{
+		Name:   name,
+		mdb:    mdb,
+		idb:    idb,
+		indexs: make(map[string]IndexInfo),
+	}
+	table.createIndexs()
+	go func() {
+		for {
+			time.Sleep(5 * time.Minute)
+			mdb.RunValueLogGC(0.5) // 回收 50% 的无效数据
+			idb.RunValueLogGC(0.5)
+		}
+	}()
+	table.onExit()
+	return table
+}
+func (t *Table[T]) onExit() {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		defer os.Exit(0)
+		//log.Printf("Received signal: %v\n", sig)
+		t.cleanup()
+
+	}()
+}
+func (t *Table[T]) cleanup() {
+	t.mdb.Close()
+	t.idb.Close()
+}
+
+func (t *Table[T]) createIndexs() {
+	mode := new(T)
+	modeType := getRefTypeElem(mode)
+	var indexes []IndexInfo
+	for i := range modeType.NumField() {
+		field := modeType.Field(i)
+		tag := field.Tag.Get("gorm")
+		if strings.Contains(tag, "primaryKey") {
+		} else if strings.Contains(tag, "index:") {
+			indexName := strings.Split(tag, "index:")[1]
+			indexName = regexp.MustCompile(`;.*$`).ReplaceAllString(indexName, "")
+			indexInfo := IndexInfo{
+				Name:  indexName,
+				Field: field.Name,
+				Type:  field.Type.String(),
+			}
+			indexes = append(indexes, indexInfo)
+		} else if strings.Contains(tag, "uniqueIndex:") {
+			indexName := strings.Split(tag, "uniqueIndex:")[1]
+			indexName = regexp.MustCompile(`;.*$`).ReplaceAllString(indexName, "")
+			indexInfo := IndexInfo{
+				Name:  indexName,
+				Field: field.Name,
+				Type:  field.Type.String(),
+			}
+			indexes = append(indexes, indexInfo)
+		}
+	}
+	for _, idx := range indexes {
+		t.indexs[idx.Name] = idx
+	}
+
+}
+
+func (t *Table[T]) Get(id any) (value T, ok bool) {
+	//uid := fmt.Sprintf("%v", id)
+	t.mdb.View(func(txn *badger.Txn) error {
+		/* ukey := []byte(uid)
+		item, err := txn.Get(ukey)
+		if err != nil {
+			return err
+		}
+		return item.Value(func(val []byte) error {
+			value, err = to[T](val)
+			if err != nil {
+				txn.Delete(ukey)
+			}
+			return err
+		}) */
+		value, ok = t.GetWithTxn(txn, id)
+		return nil
+	})
+	return value, ok
+}
+func (t *Table[T]) GetWithTxn(txn *badger.Txn, id any) (value T, ok bool) {
+	uid := fmt.Sprintf("%v", id)
+	ukey := []byte(uid)
+	item, err := txn.Get(ukey)
+	if err != nil {
+		return value, false
+	}
+	item.Value(func(val []byte) error {
+		value, err = to[T](val)
+		if err != nil {
+			txn.Delete(ukey)
+		}
+		ok = err == nil
+		return err
+	})
+	return value, ok
+}
+func (t *Table[T]) SearchByIdx(idxname string, value any, filter func(t T) bool, startAndEnd ...int) []T {
+	if i, ok := t.indexs[idxname]; ok {
+		var start, end int = 0, 1
+		if len(startAndEnd) == 1 {
+			start = startAndEnd[0]
+			end = start + 1
+		}
+		key := buildIndexKey(i.Name, fmt.Sprintf("%v", value))
+		return t.search(key, false, start, end, filter)
+	}
+	return make([]T, 0)
+}
+func (t *Table[T]) Search(id string, filter func(t T) bool, startAndEnd ...int) []T {
+	var start, end int = 0, 1
+	if len(startAndEnd) == 1 {
+		start = startAndEnd[0]
+		end = start + 1
+	} else if len(startAndEnd) >= 2 {
+		start = startAndEnd[0]
+		end = startAndEnd[1] + 1
+	}
+	return t.search(id, true, start, end, filter)
+}
+func (t *Table[T]) Seek(handle func(v T)) {
+	opts := badger.DefaultIteratorOptions
+	opts.PrefetchSize = 100 // 每次预取 100 个键值对
+	opts.PrefetchValues = false
+	t.mdb.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		for it.Seek([]byte("")); it.Valid(); it.Next() {
+			item := it.Item()
+			skey := string(item.Key())
+			item.Value(func(val []byte) error {
+				v, err := to[T](val)
+				if err != nil {
+					t.Delete(skey)
+					return err
+				}
+				handle(v)
+				return nil
+			})
+		}
+		return nil
+	})
+}
+func (t *Table[T]) search(key string, isMain bool, start int, end int, filter func(t T) bool) (list []T) {
+	defer func() {
+		if r := recover(); r != nil {
+			list = make([]T, 0)
+			debug.PrintStack()
+		}
+	}()
+
+	var totalSize = end - start
+	var db *badger.DB = t.mdb
+	if !isMain {
+		db = t.idb
+	}
+	opts := badger.DefaultIteratorOptions
+	opts.PrefetchSize = 10 // 每次预取 100 个键值对
+	opts.PrefetchValues = false
+	db.View(func(txn *badger.Txn) error {
+		ukey := []byte(key)
+		// 创建迭代器
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		// 设置范围
+		var curIdx int = 0
+		for it.Seek(ukey); it.Valid(); it.Next() {
+			if len(list) >= totalSize {
+				break
+			}
+			item := it.Item()
+			skey := string(item.Key())
+			if !strings.HasPrefix(skey, key) {
+				break
+			}
+			if start > curIdx {
+				curIdx++
+				continue
+			}
+			if curIdx >= end {
+				break
+			}
+			item.Value(func(val []byte) error {
+				var line T
+				if isMain {
+					if len(val) < 1 {
+						t.Delete(ukey)
+						return nil
+					}
+					v, err := to[T](val)
+					if err != nil {
+						t.Delete(skey)
+						return err
+					}
+					status := filter(v)
+					if !status {
+						return nil
+					}
+					line = v
+				} else {
+					v, yes := t.GetWithTxn(txn, string(val))
+					if !yes {
+						return nil
+					}
+					status := filter(v)
+					if !status {
+						return nil
+					}
+					line = v
+				}
+				curIdx++
+				list = append(list, line)
+				return nil
+			})
+
+		}
+		return nil
+	})
+	return list
+}
+
+func (t *Table[T]) Update(id any, entity T) (err error) {
+	uid := fmt.Sprintf("%v", id)
+	eData, exist := t.Get(uid)
+	rentity := getRefValueElem(entity)
+	for _, idx := range t.indexs {
+		value := rentity.FieldByName(idx.Field)
+		if !value.IsZero() {
+			key := buildIndexKey(idx.Name, value.String(), uid)
+			t.idb.Update(func(itxn *badger.Txn) error { return itxn.Set([]byte(key), []byte(uid)) })
+
+			if oldVal := getValue(eData, idx.Field); oldVal.IsValid() && !oldVal.IsZero() {
+				key := buildIndexKey(idx.Name, oldVal.String(), uid)
+				t.idb.Update(func(itxn *badger.Txn) error { return itxn.Delete([]byte(key)) })
+			}
+		}
+	}
+	if exist {
+		concat(&eData, &entity)
+	}
+	err = t.mdb.Update(func(txn *badger.Txn) error {
+		if json, err := json.Marshal(entity); err == nil {
+			return txn.Set([]byte(uid), json)
+		} else {
+			return err
+		}
+	})
+	return err
+}
+func (t *Table[T]) Delete(id any) (err error) {
+	uid := fmt.Sprintf("%v", id)
+	if entity, ok := t.Get(uid); ok {
+		rentity := getRefValueElem(entity)
+		for _, idx := range t.indexs {
+			t.idb.Update(func(itxn *badger.Txn) error {
+				value := rentity.FieldByName(idx.Name)
+				key := buildIndexKey(idx.Name, value.String())
+				itxn.Delete([]byte(key))
+				return nil
+			})
+		}
+		return t.mdb.Update(func(txn *badger.Txn) error { return txn.Delete([]byte(uid)) })
+	}
+	return nil
+}
+
+// 泛型函数：将 any 类型转换为泛型类型 T
+func to[T any](val []byte) (obj T, err error) {
+	if len(val) < 2 {
+		return obj, errors.New("is no json")
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			if e, ok := r.(error); ok {
+				err = e
+				log.Printf("toobject error %s\r\n ", string(val))
+				debug.PrintStack()
+			} else {
+				err = fmt.Errorf("%v", r)
+			}
+		}
+	}()
+	err = json.Unmarshal(val, &obj)
+	return obj, err
+}
+
+func concat[T any](oldVal T, newVal T) T {
+	rstruct := getRefTypeElem(oldVal)
+	rvalue := getRefValueElem(newVal)
+	for i := range rstruct.NumField() {
+		field := rstruct.Field(i)
+		valueNew := rvalue.FieldByName(field.Name)
+		oldValue := getValue(oldVal, field.Name)
+		if valueNew.IsZero() && valueNew.CanSet() {
+			valueNew.Set(oldValue)
+			//value.Set(getValue(oldVal, field.Name))
+		}
+	}
+	return newVal
+}
+
+func getValue(entity any, field string) reflect.Value {
+	rvalue := getRefValueElem(entity)
+	if rvalue.IsValid() {
+		return rvalue.FieldByName(field)
+	} else {
+		return reflect.Value{}
+	}
+}
+func getRefValueElem(entity any) reflect.Value {
+	v := reflect.ValueOf(entity)
+	for {
+		if v.Kind() == reflect.Ptr {
+			v = v.Elem()
+		} else {
+			break
+		}
+	}
+	return v
+}
+func getRefTypeElem(entity any) reflect.Type {
+	v := reflect.TypeOf(entity)
+	for {
+		if v.Kind() == reflect.Ptr {
+			v = v.Elem()
+		} else {
+			break
+		}
+	}
+	return v
+}
