@@ -1,26 +1,18 @@
-package model
+package kvdb
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
-	"os"
-	"os/signal"
-	"path/filepath"
 	"reflect"
 	"regexp"
 	"runtime/debug"
 	"strings"
-	"syscall"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/vmihailenco/msgpack/v5"
 )
-
-func buildIndexKey(name string, values ...string) string {
-	return fmt.Sprintf("%s-%s", name, strings.Join(values, "_"))
-}
 
 type IndexInfo struct {
 	Name  string
@@ -35,7 +27,7 @@ type Table[T any] struct {
 }
 
 // 自定义 Logger，只输出 WARN 及以上级别的日志
-type warnLogger struct{}
+/* type warnLogger struct{}
 
 func (w warnLogger) Errorf(format string, args ...interface{}) {
 	log.Printf("[ERROR] "+format, args...)
@@ -65,6 +57,7 @@ func GetHomeDir(dirs ...string) string {
 	}
 	return homeDir
 }
+*/
 func createMasterDB(table string) (*redis.Client, error) {
 	return mdb, nil
 }
@@ -88,10 +81,11 @@ func NewTable[T any](name string) Table[T] {
 		indexs: make(map[string]IndexInfo),
 	}
 	table.createIndexs()
-	table.onExit()
+	//table.onExit()
 	return table
 }
-func (t *Table[T]) onExit() {
+
+/* func (t *Table[T]) onExit() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -103,7 +97,7 @@ func (t *Table[T]) onExit() {
 func (t *Table[T]) cleanup() {
 	t.mdb.Close()
 	t.idb.Close()
-}
+} */
 
 func (t *Table[T]) createIndexs() {
 	mode := new(T)
@@ -140,18 +134,119 @@ func (t *Table[T]) createIndexs() {
 }
 
 func (t *Table[T]) Get(id string) (value T, ok bool) {
-	v, err := t.mdb.Get(ctx, id).Result()
+	cmd := t.mdb.Get(context.Background(), id)
+	if err := cmd.Err(); err != nil {
+		if err != redis.Nil {
+			t.mdb.Del(context.Background(), id)
+		}
+		return value, false
+	}
+	if bs, err := cmd.Bytes(); err == nil {
+		if len(bs) < 1 {
+			t.mdb.Del(context.Background(), id)
+			return value, false
+		}
+		if value, err = to[T](bs); err == nil {
+			return value, true
+		} else {
+			t.mdb.Del(context.Background(), id)
+			return value, false
+		}
+	} else {
+		t.mdb.Del(context.Background(), id)
+	}
+	return value, false
+}
+func (t *Table[T]) Gets(ids ...string) (list []T) {
+	vs, err := t.mdb.MGet(context.Background(), ids...).Result()
 	if err != nil {
-		return value, false
+		return list
 	}
-	if v == "" {
-		t.mdb.Del(ctx, id)
-		return value, false
+	var delIds []string
+	for i, v := range vs {
+		if bs, ok := v.([]byte); ok {
+			if ele, err := to[T](bs); err == nil {
+				list = append(list, ele)
+			} else {
+				delIds = append(delIds, ids[i])
+			}
+		} else {
+			delIds = append(delIds, ids[i])
+		}
 	}
-	value, err = to[T]([]byte(v))
-	return value, ok
+	t.Delete(delIds...)
+	return list
 }
 
+func (t *Table[T]) Insert(id any, entity T) (err error) {
+	uid := fmt.Sprintf("%v", id)
+	rentity := getRefValueElem(entity)
+	ctx := context.Background()
+	ipipe := t.idb.Pipeline()
+	for _, idx := range t.indexs {
+		value := rentity.FieldByName(idx.Field)
+		if !value.IsZero() {
+			key := buildIndexKey(idx.Name, value.String(), uid)
+			ipipe.Set(ctx, key, uid, 0)
+		}
+	}
+	ipipe.Exec(ctx)
+	if bs, err := msgpack.Marshal(entity); err == nil {
+		_, err = t.mdb.Set(ctx, uid, bs, 0).Result()
+		return err
+	}
+	<-ctx.Done()
+	return err
+}
+
+func (t *Table[T]) Update(id any, entity T) (err error) {
+	uid := fmt.Sprintf("%v", id)
+	eData, exist := t.Get(uid)
+	if !exist {
+		return fmt.Errorf("update id=%v is noexist", id)
+	}
+	rentity := getRefValueElem(entity)
+	ctx := context.Background()
+	ipipe := t.idb.Pipeline()
+	for _, idx := range t.indexs {
+		value := rentity.FieldByName(idx.Field)
+		if !value.IsZero() {
+			key := buildIndexKey(idx.Name, value.String(), uid)
+
+			ipipe.Set(ctx, key, uid, 0)
+			if oldVal := getValue(eData, idx.Field); oldVal.IsValid() && !oldVal.IsZero() {
+				key := buildIndexKey(idx.Name, oldVal.String(), uid)
+				ipipe.Del(ctx, key)
+			}
+		}
+	}
+	ipipe.Exec(ctx)
+	if exist {
+		concat(&eData, &entity)
+	}
+	if json, err := msgpack.Marshal(entity); err == nil {
+		_, err = t.mdb.Set(ctx, uid, json, 0).Result()
+		return err
+	}
+	return err
+}
+func (t *Table[T]) Delete(id ...string) {
+	ctx := context.Background()
+	uid := fmt.Sprintf("%v", id)
+	if entity, ok := t.Get(uid); ok {
+		rentity := getRefValueElem(entity)
+		ipipe := t.idb.Pipeline()
+		for _, idx := range t.indexs {
+			value := rentity.FieldByName(idx.Name)
+			key := buildIndexKey(idx.Name, value.String())
+			ipipe.Del(ctx, key)
+		}
+		if _, err := ipipe.Exec(ctx); err == nil {
+			//<-ctx.Done()
+		}
+		t.mdb.Del(context.Background(), uid).Result()
+	}
+}
 func (t *Table[T]) SearchByIdx(idxname string, value any, filter func(t T) bool, startAndEnd ...int) []T {
 	if i, ok := t.indexs[idxname]; ok {
 		var start, end int = 0, 1
@@ -176,23 +271,30 @@ func (t *Table[T]) Search(id string, filter func(t T) bool, startAndEnd ...int) 
 	return t.search(id, true, start, end, filter)
 }
 func (t *Table[T]) Seek(handle func(v T)) {
-	ctx := context.Background()
 	// 初始化游标
 	var cursor uint64
 	var keys []string
 	// 使用 SCAN 遍历所有键
 	for {
 		var err error
-		keys, cursor, err = t.mdb.Scan(ctx, cursor, "*", 100).Result()
+		keys, cursor, err = t.mdb.Scan(context.Background(), cursor, "*", 100).Result()
 		if err != nil {
 			log.Println("scan error", err)
 			break
 		}
-		// 处理匹配的键
-		for _, key := range keys {
-			if val, ok := t.Get(key); ok {
-				handle(val)
+		var delIds []string
+		if vs, err := t.mdb.MGet(context.Background(), keys...).Result(); err == nil && len(vs) > 0 {
+			for i, v := range vs {
+				if bs, ok := v.([]byte); ok {
+					ele, _ := to[T](bs)
+					handle(ele)
+				} else {
+					delIds = append(delIds, keys[i])
+				}
 			}
+		}
+		if len(delIds) > 0 {
+			t.Delete(delIds...)
 		}
 		// 如果游标为 0，表示遍历结束
 		if cursor == 0 {
@@ -299,52 +401,6 @@ func (t *Table[T]) search(key string, isMain bool, start int, end int, filter fu
 	return list
 }
 
-func (t *Table[T]) Update(id any, entity T) (err error) {
-	uid := fmt.Sprintf("%v", id)
-	eData, exist := t.Get(uid)
-	rentity := getRefValueElem(entity)
-	ctx := context.Background()
-	ipipe := t.idb.Pipeline()
-	for _, idx := range t.indexs {
-		value := rentity.FieldByName(idx.Field)
-		if !value.IsZero() {
-			key := buildIndexKey(idx.Name, value.String(), uid)
-
-			ipipe.Set(ctx, key, uid, 0)
-			if oldVal := getValue(eData, idx.Field); oldVal.IsValid() && !oldVal.IsZero() {
-				key := buildIndexKey(idx.Name, oldVal.String(), uid)
-				ipipe.Del(ctx, key)
-			}
-		}
-	}
-	ipipe.Exec(ctx)
-	if exist {
-		concat(&eData, &entity)
-	}
-
-	if json, err := json.Marshal(entity); err == nil {
-		_, err = t.mdb.Set(ctx, uid, json, 0).Result()
-		return err
-	}
-	return err
-}
-func (t *Table[T]) Delete(id any) (err error) {
-	ctx := context.Background()
-	uid := fmt.Sprintf("%v", id)
-	if entity, ok := t.Get(uid); ok {
-		rentity := getRefValueElem(entity)
-		ipipe := t.idb.Pipeline()
-		for _, idx := range t.indexs {
-			value := rentity.FieldByName(idx.Name)
-			key := buildIndexKey(idx.Name, value.String())
-			ipipe.Del(ctx, key)
-		}
-		ipipe.Exec(ctx)
-		t.mdb.Del(context.Background(), uid)
-	}
-	return nil
-}
-
 // 泛型函数：将 any 类型转换为泛型类型 T
 func to[T any](val []byte) (obj T, err error) {
 	if len(val) < 2 {
@@ -361,7 +417,7 @@ func to[T any](val []byte) (obj T, err error) {
 			}
 		}
 	}()
-	err = json.Unmarshal(val, &obj)
+	err = msgpack.Unmarshal(val, &obj)
 	return obj, err
 }
 
@@ -409,4 +465,7 @@ func getRefTypeElem(entity any) reflect.Type {
 		}
 	}
 	return v
+}
+func buildIndexKey(name string, values ...string) string {
+	return fmt.Sprintf("%s-%s", name, strings.Join(values, "_"))
 }

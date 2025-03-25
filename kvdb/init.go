@@ -1,7 +1,6 @@
-package model
+package kvdb
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/redis/go-redis/v9"
@@ -16,7 +15,8 @@ type Options struct {
 
 var mdb *redis.Client
 var idb *redis.Client
-var ctx context.Context
+
+//var ctx context.Context
 
 func InitRedis(o Options) {
 	mdb = redis.NewClient(&redis.Options{
@@ -30,18 +30,5 @@ func InitRedis(o Options) {
 		DB:       o.DB + 1,                             // 数据库编号
 	})
 	// 测试连接
-	ctx = context.Background()
-}
-
-func RSet(key string, value any) error {
-	return mdb.Set(ctx, key, value, 0).Err()
-}
-func RGet(key string, value any) (string, error) {
-	return mdb.Get(ctx, key).Result()
-}
-func RDel(keys ...string) (int64, error) {
-	return mdb.Del(ctx, keys...).Result()
-}
-func RExists(keys ...string) (int64, error) {
-	return mdb.Exists(ctx, keys...).Result()
+	//	ctx = context.Background()
 }
