@@ -17,18 +17,19 @@ type IndexInfo struct {
 	Type  string
 }
 type Table[T any] interface {
-	Name() string
+	Name() string //表名
+	//createIndexs() //创建索引
 	//Name   string
 	//mdb    *redis.Client
 	//idb    *redis.Client
 	//Indexs() map[string]IndexInfo
-	Get(id string) (value T, ok bool)
-	Gets(ids ...string) (list []T)
-	Insert(id string, t T) error
-	Update(id string, t T) error
-	Delete(id ...string)
-	Search(id string, filter func(t T) bool, start_end ...int) []T
-	Scan(handle func(t T) bool)
+	Get(id string) (v T, ok bool)                                  //获取,根据id
+	Gets(ids ...string) (list []T)                                 //获取列表,多个id
+	Insert(id string, v T) error                                   //插入
+	Update(id string, v T) error                                   //更新
+	Delete(ids ...string)                                          //删除
+	Search(id string, filter func(v T) bool, start_end ...int) []T //搜索
+	Scan(handle func(v T) bool)                                    //扫描
 }
 
 // 泛型函数：将 any 类型转换为泛型类型 T
