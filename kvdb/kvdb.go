@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"reflect"
+	"regexp"
 	"runtime/debug"
 	"strings"
 
@@ -22,7 +23,7 @@ type Table[T any] interface {
 	//Name   string
 	//mdb    *redis.Client
 	//idb    *redis.Client
-	//Indexs() map[string]IndexInfo
+	Indexs() map[string]IndexInfo
 	Get(id string) (v T, ok bool)                                  //获取,根据id
 	Gets(ids ...string) (list []T)                                 //获取列表,多个id
 	Insert(id string, v T) error                                   //插入
@@ -30,6 +31,40 @@ type Table[T any] interface {
 	Delete(ids ...string)                                          //删除
 	Search(id string, filter func(v T) bool, start_end ...int) []T //搜索
 	Scan(handle func(v T) bool)                                    //扫描
+}
+
+func createIndexs[T any](t Table[T]) {
+	mode := new(T)
+	modeType := getRefTypeElem(mode)
+	var indexes []IndexInfo
+	for i := range modeType.NumField() {
+		field := modeType.Field(i)
+		tag := field.Tag.Get("kvdb")
+		if strings.Contains(tag, "primaryKey") {
+		} else if strings.Contains(tag, "index:") {
+			indexName := strings.Split(tag, "index:")[1]
+			indexName = regexp.MustCompile(`;.*$`).ReplaceAllString(indexName, "")
+			indexInfo := IndexInfo{
+				Name:  indexName,
+				Field: field.Name,
+				Type:  field.Type.String(),
+			}
+			indexes = append(indexes, indexInfo)
+		} /* else if strings.Contains(tag, "uniqueIndex:") {
+			indexName := strings.Split(tag, "uniqueIndex:")[1]
+			indexName = regexp.MustCompile(`;.*$`).ReplaceAllString(indexName, "")
+			indexInfo := IndexInfo{
+				Name:  indexName,
+				Field: field.Name,
+				Type:  field.Type.String(),
+			}
+			indexes = append(indexes, indexInfo)
+		} */
+	}
+	for _, idx := range indexes {
+		t.Indexs()[idx.Name] = idx
+	}
+
 }
 
 // 泛型函数：将 any 类型转换为泛型类型 T

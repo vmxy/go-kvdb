@@ -27,11 +27,15 @@ func NewTableMem[T any](name string) Table[T] {
 	mdb, _ := ristretto.NewCache(&config)
 	idb, _ := ristretto.NewCache(&config)
 	table := TableMem[T]{
-		name: name,
-		mdb:  mdb,
-		idb:  idb,
+		name:   name,
+		mdb:    mdb,
+		idb:    idb,
+		indexs: make(map[string]IndexInfo),
 	}
 	return &table
+}
+func (t *TableMem[T]) Indexs() map[string]IndexInfo {
+	return t.indexs
 }
 
 // Delete implements Table.

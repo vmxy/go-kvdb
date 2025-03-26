@@ -80,6 +80,9 @@ func NewTable[T any](name string) Table[T] {
 func (t *TableRedis[T]) Name() string {
 	return t.name
 }
+func (t *TableRedis[T]) Indexs() map[string]IndexInfo {
+	return t.indexs
+}
 
 /* func (t *Table[T]) onExit() {
 	sigChan := make(chan os.Signal, 1)
