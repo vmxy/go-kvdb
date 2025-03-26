@@ -43,6 +43,9 @@ type MemOptions struct {
 var memMdb, memIdb *pebble.DB
 
 func InitMem(o MemOptions) {
+	if memMdb != nil {
+		return
+	}
 	if o.mem {
 		// 纯内存数据库（数据仅存于内存）
 		if db, err := pebble.Open("", &pebble.Options{

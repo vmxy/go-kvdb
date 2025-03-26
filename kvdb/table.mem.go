@@ -26,7 +26,7 @@ type TableMem[T any] struct {
 }
 
 var _ Table[string] = (*TableMem[string])(nil)
-var writerOpt = pebble.WriteOptions{}
+var writerOpt = pebble.WriteOptions{Sync: true}
 
 func NewTableMem[T any](name string) Table[T] {
 	cache, _ := ristretto.NewCache(&config)
@@ -37,7 +37,7 @@ func NewTableMem[T any](name string) Table[T] {
 		cache:  cache,
 		indexs: createIndexs[T](),
 	}
-
+	fmt.Println("create idxs", table.indexs)
 	return &table
 }
 
@@ -59,7 +59,8 @@ func (t *TableMem[T]) Get(id string) (v T, ok bool) {
 		defer closer.Close()
 		if v, err := unmarshal[T](bs); err == nil {
 			t.cache.Set(id, v, 1)
-			return v, ok
+			//fmt.Println("get ", id, v)
+			return v, true
 		} else {
 			t.Delete(id)
 		}
@@ -87,7 +88,7 @@ func (t *TableMem[T]) Insert(id string, v T) error {
 				value := rentity.FieldByName(idx.Field)
 				if !value.IsZero() {
 					key := buildIndexKey(idx.Name, value.String(), id)
-					t.idb.Set([]byte(key), []byte(id), &writerOpt)
+					t.idb.Set([]byte(key), []byte(id), pebble.Sync)
 				}
 			}
 			return nil
@@ -110,13 +111,13 @@ func (t *TableMem[T]) Update(id string, v T) error {
 				t.idb.Set([]byte(key), []byte(id), &writerOpt)
 				if oldVal := getValue(o, idx.Field); oldVal.IsValid() && !oldVal.IsZero() {
 					key := buildIndexKey(idx.Name, oldVal.String(), id)
-					t.idb.Delete([]byte(key), &writerOpt)
+					t.idb.Delete([]byte(key), pebble.Sync)
 				}
 			}
 		}
 		v = concat(o, v)
 		if json, err := marshal(v); err == nil {
-			t.mdb.Set([]byte(id), []byte(json), &writerOpt)
+			t.mdb.Set([]byte(id), []byte(json), pebble.Sync)
 			return nil
 		} else {
 			return err
@@ -134,11 +135,11 @@ func (t *TableMem[T]) Delete(ids ...string) {
 				value := rentity.FieldByName(idx.Name)
 				key := buildIndexKey(idx.Name, value.String())
 				//itxn.Delete([]byte(key))
-				t.idb.Delete([]byte(key), &writerOpt)
+				t.idb.Delete([]byte(key), pebble.Sync)
 			}
 		}
 		t.cache.Del(id)
-		t.mdb.Delete([]byte(id), &writerOpt)
+		t.mdb.Delete([]byte(id), pebble.Sync)
 	}
 }
 
