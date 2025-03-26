@@ -3,10 +3,6 @@ package kvdb
 import (
 	"context"
 	"fmt"
-	"log"
-	"regexp"
-	"runtime/debug"
-	"strings"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/vmihailenco/msgpack/v5"
@@ -58,30 +54,29 @@ func createIndexDB(table string) (*redis.Client, error) {
 	return idb, nil
 }
 
-func NewTable[T any](name string) Table[T] {
-	mdb, err := createMasterDB(name)
-	if err != nil {
-		log.Fatalf("create kvdb [%s] master error\r\n", name)
+/*
+	func NewTable[T any](name string) Table[T] {
+		mdb, err := createMasterDB(name)
+		if err != nil {
+			log.Fatalf("create kvdb [%s] master error\r\n", name)
+		}
+		idb, err := createIndexDB(name)
+		if err != nil {
+			log.Fatalf("create kvdb [%s] index error\r\n", name)
+		}
+		table := TableRedis[T]{
+			name:   name,
+			mdb:    mdb,
+			idb:    idb,
+			indexs: make(map[string]IndexInfo),
+		}
+		table.createIndexs()
+		//table.onExit()
+		return &table
 	}
-	idb, err := createIndexDB(name)
-	if err != nil {
-		log.Fatalf("create kvdb [%s] index error\r\n", name)
-	}
-	table := TableRedis[T]{
-		name:   name,
-		mdb:    mdb,
-		idb:    idb,
-		indexs: make(map[string]IndexInfo),
-	}
-	table.createIndexs()
-	//table.onExit()
-	return &table
-}
+*/
 func (t *TableRedis[T]) Name() string {
 	return t.name
-}
-func (t *TableRedis[T]) Indexs() map[string]IndexInfo {
-	return t.indexs
 }
 
 /* func (t *Table[T]) onExit() {
@@ -98,40 +93,6 @@ func (t *Table[T]) cleanup() {
 	t.idb.Close()
 } */
 
-func (t *TableRedis[T]) createIndexs() {
-	mode := new(T)
-	modeType := getRefTypeElem(mode)
-	var indexes []IndexInfo
-	for i := range modeType.NumField() {
-		field := modeType.Field(i)
-		tag := field.Tag.Get("gorm")
-		if strings.Contains(tag, "primaryKey") {
-		} else if strings.Contains(tag, "index:") {
-			indexName := strings.Split(tag, "index:")[1]
-			indexName = regexp.MustCompile(`;.*$`).ReplaceAllString(indexName, "")
-			indexInfo := IndexInfo{
-				Name:  indexName,
-				Field: field.Name,
-				Type:  field.Type.String(),
-			}
-			indexes = append(indexes, indexInfo)
-		} else if strings.Contains(tag, "uniqueIndex:") {
-			indexName := strings.Split(tag, "uniqueIndex:")[1]
-			indexName = regexp.MustCompile(`;.*$`).ReplaceAllString(indexName, "")
-			indexInfo := IndexInfo{
-				Name:  indexName,
-				Field: field.Name,
-				Type:  field.Type.String(),
-			}
-			indexes = append(indexes, indexInfo)
-		}
-	}
-	for _, idx := range indexes {
-		t.indexs[idx.Name] = idx
-	}
-
-}
-
 func (t *TableRedis[T]) Get(id string) (value T, ok bool) {
 	cmd := t.mdb.Get(context.Background(), id)
 	if err := cmd.Err(); err != nil {
@@ -145,7 +106,7 @@ func (t *TableRedis[T]) Get(id string) (value T, ok bool) {
 			t.mdb.Del(context.Background(), id)
 			return value, false
 		}
-		if value, err = to[T](bs); err == nil {
+		if value, err = unmarshal[T](bs); err == nil {
 			return value, true
 		} else {
 			t.mdb.Del(context.Background(), id)
@@ -164,7 +125,7 @@ func (t *TableRedis[T]) Gets(ids ...string) (list []T) {
 	var delIds []string
 	for i, v := range vs {
 		if bs, ok := v.([]byte); ok {
-			if ele, err := to[T](bs); err == nil {
+			if ele, err := unmarshal[T](bs); err == nil {
 				list = append(list, ele)
 			} else {
 				delIds = append(delIds, ids[i])
@@ -245,165 +206,4 @@ func (t *TableRedis[T]) Delete(id ...string) {
 		}
 		t.mdb.Del(context.Background(), uid).Result()
 	}
-}
-func (t *TableRedis[T]) SearchByIdx(idxname string, value any, filter func(t T) bool, startAndEnd ...int) []T {
-	if i, ok := t.indexs[idxname]; ok {
-		var start, end int = 0, 1
-		if len(startAndEnd) == 1 {
-			start = startAndEnd[0]
-			end = start + 1
-		}
-		key := buildIndexKey(i.Name, fmt.Sprintf("%v", value))
-		return t.search(key, false, start, end, filter)
-	}
-	return make([]T, 0)
-}
-func (t *TableRedis[T]) Search(id string, filter func(t T) bool, startAndEnd ...int) []T {
-	var start, end int = 0, 1
-	if len(startAndEnd) == 1 {
-		start = startAndEnd[0]
-		end = start + 1
-	} else if len(startAndEnd) >= 2 {
-		start = startAndEnd[0]
-		end = startAndEnd[1] + 1
-	}
-	return t.search(id, true, start, end, filter)
-}
-func (t *TableRedis[T]) Scan(handle func(v T) bool) {
-	// 初始化游标
-	var cursor uint64
-	var keys []string
-	// 使用 SCAN 遍历所有键
-	var isEnd = false
-	for {
-		if isEnd {
-			break
-		}
-		var err error
-		keys, cursor, err = t.mdb.Scan(context.Background(), cursor, "*", 100).Result()
-		if err != nil {
-			log.Println("scan error", err)
-			break
-		}
-		var delIds []string
-		if vs, err := t.mdb.MGet(context.Background(), keys...).Result(); err == nil && len(vs) > 0 {
-			for i, v := range vs {
-				if bs, ok := v.([]byte); ok {
-					ele, _ := to[T](bs)
-					isEnd = handle(ele)
-					if isEnd {
-						break
-					}
-				} else {
-					delIds = append(delIds, keys[i])
-				}
-			}
-		}
-		if len(delIds) > 0 {
-			t.Delete(delIds...)
-		}
-		// 如果游标为 0，表示遍历结束
-		if cursor == 0 {
-			isEnd = true
-			break
-		}
-	}
-}
-
-type KVS struct {
-	K []string
-	V []any
-}
-
-func (t *TableRedis[T]) search(key string, isMain bool, start int, end int, filter func(t T) bool) (list []T) {
-	defer func() {
-		if r := recover(); r != nil {
-			list = make([]T, 0)
-			debug.PrintStack()
-		}
-	}()
-
-	var totalSize = end - start
-	var db *redis.Client = t.mdb
-	if !isMain {
-		db = t.idb
-	}
-	ctx := context.Background()
-	// 初始化游标
-	var cursor uint64 = uint64(start)
-	var keys []string
-	var curIdx int = 0
-	// 使用 SCAN 遍历所有键
-	for {
-		if len(list) >= totalSize {
-			break
-		}
-		var err error
-		keys, cursor, err = db.Scan(ctx, cursor, "*", 10).Result()
-		if err != nil {
-			log.Println("scan error", err)
-			break
-		}
-		var kv KVS
-
-		if isMain {
-			values, err := db.MGet(ctx, keys...).Result()
-			if err != nil {
-				return list
-			}
-			kv = KVS{
-				K: keys,
-				V: values,
-			}
-		} else {
-			ids0, err := db.MGet(ctx, keys...).Result()
-			if err != nil {
-				return list
-			}
-			var ids []string
-			for _, id := range ids0 {
-				ids = append(ids, fmt.Sprintf("%v", id))
-			}
-			values, err := t.mdb.MGet(ctx, ids...).Result()
-			kv = KVS{
-				K: ids,
-				V: values,
-			}
-		}
-		//var dels []string
-		for i, val := range kv.V {
-			if len(list) >= totalSize {
-				return
-			}
-			skey := kv.K[i]
-			if !strings.HasPrefix(skey, key) {
-				return
-			}
-			if start > curIdx {
-				curIdx++
-				continue
-			}
-			if curIdx >= end {
-				return
-			}
-			if v, ok := val.(string); ok {
-				x, err := to[T]([]byte(v))
-				if err != nil {
-					continue
-				}
-				status := filter(x)
-				if !status {
-					continue
-				}
-				curIdx++
-				list = append(list, x)
-			}
-		}
-		// 如果游标为 0，表示遍历结束
-		if cursor == 0 {
-			break
-		}
-	}
-
-	return list
 }
