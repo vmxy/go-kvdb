@@ -16,7 +16,7 @@ var config = ristretto.Config{
 
 //var cache, _ = ristretto.NewCache(&config)
 
-type TableMem[T any] struct {
+type TableMem[T Entity] struct {
 	//Table[T]
 	name   string
 	mdb    *pebble.DB
@@ -25,10 +25,10 @@ type TableMem[T any] struct {
 	indexs map[string]IndexInfo
 }
 
-var _ Table[string] = (*TableMem[string])(nil)
+var _ Table[Entity] = (*TableMem[Entity])(nil)
 var writerOpt = pebble.WriteOptions{Sync: true}
 
-func NewTableMem[T any](name string) Table[T] {
+func NewTableMem[T Entity](name string) Table[T] {
 	cache, _ := ristretto.NewCache(&config)
 	table := TableMem[T]{
 		name:   name,
@@ -115,9 +115,12 @@ func (t *TableMem[T]) Update(id string, v T) error {
 				}
 			}
 		}
-		v = concat(o, v)
+		concatEntity[*T](&o, &v)
 		if json, err := marshal(v); err == nil {
-			t.mdb.Set([]byte(id), []byte(json), pebble.Sync)
+			t.mdb.Set([]byte(id), json, pebble.Sync)
+			if _, ok := t.cache.Get(id); ok {
+				t.cache.Set(id, v, 0)
+			}
 			return nil
 		} else {
 			return err

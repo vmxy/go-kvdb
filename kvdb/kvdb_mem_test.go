@@ -13,6 +13,15 @@ type UserDemo struct {
 	Addr string
 }
 
+var _ Entity = (*UserDemo)(nil)
+
+func (u *UserDemo) GetID() string {
+	return u.ID
+}
+func (u *UserDemo) SetID(id string) {
+	u.ID = id
+}
+
 func initdb() Table[UserDemo] {
 	InitMem(MemOptions{
 		mem: true,
@@ -24,7 +33,7 @@ func TestMem(t *testing.T) {
 	fmt.Println("test===")
 }
 func TestMemInsert(t *testing.T) {
-	var tableMem Table[UserDemo] = initdb()
+	var tableMem = initdb()
 	fmt.Println("test===insert")
 	for i := range 100 {
 		user := UserDemo{
@@ -60,4 +69,18 @@ func TestMemInsert(t *testing.T) {
 	for i, v := range tableMem.SearchByIdx("idx_name", "leo", func(v UserDemo) bool { return v.Age < 50 && v.Age >= 40 }, 0, 10) {
 		fmt.Println("test search idx ", i, v)
 	}
+
+	fmt.Println("================== test update =================")
+	ids := []string{"2", "8", "5", "9"}
+	///
+	for i, v := range tableMem.Gets(ids...) {
+		fmt.Println("test update1 ", v)
+		x := tableMem.Update(v.ID, UserDemo{
+			Name: fmt.Sprintf("liming-%d", (i * 3)),
+		})
+		v2, ok := tableMem.Get(v.ID)
+		fmt.Println("test update2 ", v2, ok, x)
+
+	}
+
 }

@@ -182,7 +182,7 @@ func (t *TableRedis[T]) Update(id string, entity T) (err error) {
 	}
 	ipipe.Exec(ctx)
 	if exist {
-		concat(&eData, &entity)
+		concatEntity(&eData, &entity)
 	}
 	if json, err := msgpack.Marshal(entity); err == nil {
 		_, err = t.mdb.Set(ctx, uid, json, 0).Result()

@@ -12,7 +12,9 @@ type IndexInfo struct {
 	Field string
 	Type  string
 }
-type Table[T any] interface {
+type Entity interface {
+}
+type Table[T Entity] interface {
 	Name() string //表名
 	//createIndexs() //创建索引
 	//Name   string
@@ -63,7 +65,7 @@ func createIndexs[T any]() map[string]IndexInfo {
 	}
 	return mapidxs
 }
-func concat[T any](oldVal T, newVal T) T {
+func concatEntity[T any](oldVal T, newVal T) T {
 	rstruct := getRefTypeElem(oldVal)
 	rvalue := getRefValueElem(newVal)
 	for i := range rstruct.NumField() {
