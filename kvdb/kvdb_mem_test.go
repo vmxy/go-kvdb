@@ -66,7 +66,7 @@ func TestMemInsert(t *testing.T) {
 	}
 
 	//
-	for i, v := range tableMem.SearchByIdx("idx_name", "leo", func(v UserDemo) bool { return v.Age < 50 && v.Age >= 40 }, 0, 10) {
+	for i, v := range tableMem.SearchByIdx("idx_name", "leo", func(v UserDemo) bool { return v.Age%2 == 0 }, 27, 20) {
 		fmt.Println("test search idx ", i, v)
 	}
 
