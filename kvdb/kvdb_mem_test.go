@@ -34,7 +34,7 @@ func initdb() Table[UserDemo] {
 	dir := getAppDir("data")
 	fmt.Println("dir", dir)
 	InitMem(MemOptions{
-		mem: true,
+		Mem: true,
 		//dir: dir,
 	})
 	return NewTableMem[UserDemo]("userdemo")
@@ -53,7 +53,7 @@ func TestMemInsert(t *testing.T) {
 			Age:  11 + i,
 			Addr: fmt.Sprintf("address no.%d", i),
 		}
-		if err := tableMem.Insert(user.ID, user); err != nil {
+		if err := tableMem.Insert(user.ID, &user); err != nil {
 			fmt.Println("err===", err)
 		}
 		//g, o := tableMem.Get(user.ID)
@@ -86,7 +86,7 @@ func TestMemInsert(t *testing.T) {
 	///
 	for i, v := range tableMem.Gets(ids...) {
 		fmt.Println("test update1 ", v)
-		x := tableMem.Update(v.ID, UserDemo{
+		x := tableMem.Update(v.ID, &UserDemo{
 			Name: fmt.Sprintf("liming-%d", (i * 3)),
 		})
 		v2, ok := tableMem.Get(v.ID)

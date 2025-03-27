@@ -80,7 +80,7 @@ func (t *TableMem[T]) Gets(ids ...string) (list []T) {
 }
 
 // Insert implements Table.
-func (t *TableMem[T]) Insert(id string, v T) error {
+func (t *TableMem[T]) Insert(id string, v *T) error {
 	if json, err := marshal(v); err == nil {
 		if e1 := t.mdb.Set([]byte(id), json, &writerOpt); e1 == nil {
 			rentity := getRefValueElem(v)
@@ -101,7 +101,7 @@ func (t *TableMem[T]) Insert(id string, v T) error {
 }
 
 // Update implements Table.
-func (t *TableMem[T]) Update(id string, v T) error {
+func (t *TableMem[T]) Update(id string, v *T) error {
 	if o, ok := t.Get(id); ok {
 		rentity := getRefValueElem(v)
 		for _, idx := range t.indexs {
@@ -115,7 +115,7 @@ func (t *TableMem[T]) Update(id string, v T) error {
 				}
 			}
 		}
-		concatEntity[*T](&o, &v)
+		concatEntity[*T](&o, v)
 		if json, err := marshal(v); err == nil {
 			t.mdb.Set([]byte(id), json, pebble.Sync)
 			if _, ok := t.cache.Get(id); ok {

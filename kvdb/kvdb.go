@@ -23,12 +23,17 @@ type Table[T Entity] interface {
 	//Indexs() map[string]IndexInfo
 	Get(id string) (v T, ok bool)                                                          //获取,根据id
 	Gets(ids ...string) (list []T)                                                         //获取列表,多个id
-	Insert(id string, v T) error                                                           //插入
-	Update(id string, v T) error                                                           //更新
+	Insert(id string, v *T) error                                                          //插入
+	Update(id string, v *T) error                                                          //更新
 	Delete(ids ...string)                                                                  //删除
 	Search(id string, filter func(v T) bool, start_end ...int) (list []T)                  //搜索
 	SearchByIdx(idx string, value any, filter func(v T) bool, start_end ...int) (list []T) //搜索
 	Scan(handle func(v T) bool)                                                            //扫描
+}
+
+func NewTable[T Entity](name string) Table[T] {
+	table := NewTableMem[T](name)
+	return table
 }
 
 func createIndexs[T any]() map[string]IndexInfo {

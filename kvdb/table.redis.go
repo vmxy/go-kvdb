@@ -1,13 +1,8 @@
 package kvdb
 
-import (
-	"context"
-	"fmt"
+//"github.com/redis/go-redis/v9"
 
-	"github.com/redis/go-redis/v9"
-	"github.com/vmihailenco/msgpack/v5"
-)
-
+/*
 type TableRedis[T any] struct {
 	name   string
 	mdb    *redis.Client
@@ -16,7 +11,7 @@ type TableRedis[T any] struct {
 }
 
 // 自定义 Logger，只输出 WARN 及以上级别的日志
-/* type warnLogger struct{}
+ type warnLogger struct{}
 
 func (w warnLogger) Errorf(format string, args ...interface{}) {
 	log.Printf("[ERROR] "+format, args...)
@@ -47,6 +42,7 @@ func GetHomeDir(dirs ...string) string {
 	return homeDir
 }
 */
+/*
 func createMasterDB(table string) (*redis.Client, error) {
 	return mdb, nil
 }
@@ -54,7 +50,7 @@ func createIndexDB(table string) (*redis.Client, error) {
 	return idb, nil
 }
 
-/*
+
 	func NewTable[T any](name string) Table[T] {
 		mdb, err := createMasterDB(name)
 		if err != nil {
@@ -74,12 +70,12 @@ func createIndexDB(table string) (*redis.Client, error) {
 		//table.onExit()
 		return &table
 	}
-*/
+
 func (t *TableRedis[T]) Name() string {
 	return t.name
 }
 
-/* func (t *Table[T]) onExit() {
+ func (t *Table[T]) onExit() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -91,7 +87,7 @@ func (t *TableRedis[T]) Name() string {
 func (t *Table[T]) cleanup() {
 	t.mdb.Close()
 	t.idb.Close()
-} */
+}
 
 func (t *TableRedis[T]) Get(id string) (value T, ok bool) {
 	cmd := t.mdb.Get(context.Background(), id)
@@ -207,3 +203,4 @@ func (t *TableRedis[T]) Delete(id ...string) {
 		t.mdb.Del(context.Background(), uid).Result()
 	}
 }
+*/
