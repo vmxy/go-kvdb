@@ -1,7 +1,7 @@
 package kvdb
 
 import (
-	"fmt"
+	"path/filepath"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/vfs"
@@ -62,14 +62,14 @@ func InitMem(o MemOptions) {
 		}
 	} else {
 		// 纯内存数据库（数据仅存于内存）
-		if db, err := pebble.Open(o.dir, &pebble.Options{
+		if db, err := pebble.Open(filepath.Join(o.dir, "mdb"), &pebble.Options{
 			BytesPerSync: 1 << 20, // 1MB同步一次，提升写入性能
 		}); err == nil {
 			memMdb = db
 		}
 		// 纯内存数据库（数据仅存于内存）
-		if db, err := pebble.Open(fmt.Sprintf("%s.i", o.dir), &pebble.Options{
-			FS: vfs.NewMem(), // 使用内存文件系统
+		if db, err := pebble.Open(filepath.Join(o.dir, "idb"), &pebble.Options{
+			BytesPerSync: 1 << 20, // 1MB同步一次，提升写入性能
 		}); err == nil {
 			memIdb = db
 		}

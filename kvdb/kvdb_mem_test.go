@@ -2,6 +2,8 @@ package kvdb
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -13,18 +15,27 @@ type UserDemo struct {
 	Addr string
 }
 
-var _ Entity = (*UserDemo)(nil)
-
-func (u *UserDemo) GetID() string {
-	return u.ID
+func getAppDir(dirs ...string) string {
+	var homeDir = ""
+	if wd, err := os.Getwd(); err == nil {
+		homeDir = filepath.Join(wd, "../")
+	}
+	if homeDir == "" {
+		if d, err := os.Executable(); err == nil {
+			homeDir = filepath.Dir(d)
+		}
+	}
+	if len(dirs) > 0 {
+		return filepath.Join(homeDir, filepath.Join(dirs...))
+	}
+	return homeDir
 }
-func (u *UserDemo) SetID(id string) {
-	u.ID = id
-}
-
 func initdb() Table[UserDemo] {
+	dir := getAppDir("data")
+	fmt.Println("dir", dir)
 	InitMem(MemOptions{
 		mem: true,
+		//dir: dir,
 	})
 	return NewTableMem[UserDemo]("userdemo")
 }
