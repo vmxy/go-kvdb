@@ -3,6 +3,7 @@ package kvdb
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/dgraph-io/ristretto"
@@ -176,10 +177,13 @@ func (t *TableMem[T]) search(isMain bool, key string, filter func(t T) bool, sta
 		}
 	}
 	size := end - start
-	t.scan(isMain, &pebble.IterOptions{
+	t.scan(isMain, key, &pebble.IterOptions{
 		LowerBound: []byte(fmt.Sprintf("%s", key)),
-		UpperBound: []byte(fmt.Sprintf("%s\xff", key)),
+		//UpperBound: []byte(fmt.Sprintf("%s\xff", key)),
 	}, func(v T) bool {
+		/* 	if !strings.HasPrefix() {
+			return false
+		} */
 		if filter(v) {
 			list = append(list, v)
 		}
@@ -193,15 +197,19 @@ func (t *TableMem[T]) search(isMain bool, key string, filter func(t T) bool, sta
 
 // Scan implements Table.
 func (t *TableMem[T]) Scan(handle func(v T) bool) {
-	t.scan(true, nil, handle)
+	t.scan(true, "", nil, handle)
 }
-func (t *TableMem[T]) scan(isMain bool, op *pebble.IterOptions, handle func(v T) bool) {
+func (t *TableMem[T]) scan(isMain bool, key string, op *pebble.IterOptions, handle func(v T) bool) {
 	var db *pebble.DB = is(isMain, t.mdb, t.idb)
 	// 遍历所有键值
 	iter, _ := db.NewIter(op)
 	defer iter.Close()
 	for iter.First(); iter.Valid(); iter.Next() {
-		var id string = is(isMain, string(iter.Key()), string(iter.Value()))
+		ckey := string(iter.Key())
+		if key != "" && !strings.HasPrefix(ckey, key) {
+			break
+		}
+		var id string = is(isMain, ckey, string(iter.Value()))
 		if v, ok := t.cache.Get(id); ok {
 			if v2, o2 := v.(T); o2 {
 				if o := handle(v2); o {
