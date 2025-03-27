@@ -163,7 +163,7 @@ func (t *TableMem[T]) SearchByIdx(idxname string, value any, filter func(t T) bo
 
 // Search implements Table.
 func (t *TableMem[T]) search(isMain bool, key string, filter func(t T) bool, start_end ...int) (list []T) {
-	var start, end int = 0, 10
+	var start, end int = 0, 1
 	if len(start_end) == 1 {
 		start = start_end[0]
 		if start < 0 {
