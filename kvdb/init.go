@@ -1,12 +1,6 @@
 package kvdb
 
-import (
-	"path/filepath"
-
-	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/vfs"
-	//"github.com/redis/go-redis/v9"
-)
+//"github.com/redis/go-redis/v9"
 
 type RedisOptions struct {
 	Host     string
@@ -41,40 +35,10 @@ type MemOptions struct {
 	Mem bool
 }
 
-var memMdb, memIdb *pebble.DB
-var useMemTable = true
+var memOptions MemOptions = MemOptions{
+	Mem: true,
+}
 
-func InitMem(o MemOptions) {
-	if memMdb != nil {
-		return
-	}
-	useMemTable = true
-	if o.Mem {
-		// 纯内存数据库（数据仅存于内存）
-		if db, err := pebble.Open("", &pebble.Options{
-			FS: vfs.NewMem(), // 使用内存文件系统
-		}); err == nil {
-			memMdb = db
-		}
-		// 纯内存数据库（数据仅存于内存）
-		if db, err := pebble.Open("", &pebble.Options{
-			FS: vfs.NewMem(), // 使用内存文件系统
-		}); err == nil {
-			memIdb = db
-		}
-	} else {
-		// 纯内存数据库（数据仅存于内存）
-		if db, err := pebble.Open(filepath.Join(o.Dir, "mdb"), &pebble.Options{
-			BytesPerSync: 1 << 20, // 1MB同步一次，提升写入性能
-		}); err == nil {
-			memMdb = db
-		}
-		// 纯内存数据库（数据仅存于内存）
-		if db, err := pebble.Open(filepath.Join(o.Dir, "idb"), &pebble.Options{
-			BytesPerSync: 1 << 20, // 1MB同步一次，提升写入性能
-		}); err == nil {
-			memIdb = db
-		}
-	}
-
+func InitMem(options MemOptions) {
+	memOptions = options
 }

@@ -3,9 +3,11 @@ package kvdb
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/dgraph-io/ristretto"
 )
 
@@ -33,13 +35,42 @@ func NewTableMem[T Entity](name string) Table[T] {
 	cache, _ := ristretto.NewCache(&config)
 	table := TableMem[T]{
 		name:   name,
-		mdb:    memMdb,
-		idb:    memIdb,
 		cache:  cache,
 		indexs: createIndexs[T](),
 	}
+	table.init()
 	fmt.Println("create idxs", table.indexs)
 	return &table
+}
+func (t *TableMem[T]) init() {
+	if memOptions.Mem {
+		// 纯内存数据库（数据仅存于内存）
+		if db, err := pebble.Open("", &pebble.Options{
+			FS: vfs.NewMem(), // 使用内存文件系统
+		}); err == nil {
+			t.mdb = db
+		}
+		// 纯内存数据库（数据仅存于内存）
+		if db, err := pebble.Open("", &pebble.Options{
+			FS: vfs.NewMem(), // 使用内存文件系统
+		}); err == nil {
+			t.idb = db
+		}
+	} else {
+		// 纯内存数据库（数据仅存于内存）
+		if db, err := pebble.Open(filepath.Join(memOptions.Dir, t.name, "mdb"), &pebble.Options{
+			BytesPerSync: 1 << 20, // 1MB同步一次，提升写入性能
+		}); err == nil {
+			t.mdb = db
+		}
+		// 纯内存数据库（数据仅存于内存）
+		if db, err := pebble.Open(filepath.Join(memOptions.Dir, t.name, "idb"), &pebble.Options{
+			BytesPerSync: 1 << 20, // 1MB同步一次，提升写入性能
+		}); err == nil {
+			t.idb = db
+		}
+	}
+
 }
 
 // Name implements Table.

@@ -29,6 +29,7 @@ type Table[T Entity] interface {
 	Search(id string, filter func(v T) bool, start_end ...int) (list []T)                  //搜索
 	SearchByIdx(idx string, value any, filter func(v T) bool, start_end ...int) (list []T) //搜索
 	Scan(handle func(v T) bool)                                                            //扫描
+	init()                                                                                 //初始化db表
 }
 
 func NewTable[T Entity](name string) Table[T] {
