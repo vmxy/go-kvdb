@@ -39,7 +39,10 @@ func NewTableMem[T Entity](name string) Table[T] {
 		indexs: createIndexs[T](),
 	}
 	table.init()
-	fmt.Println("create idxs", table.indexs)
+	fmt.Println("[TableMem][Index]", table.name)
+	for _, v := range table.indexs {
+		fmt.Printf("\t%s: %s\r\n", v.Name, v.Field)
+	}
 	return &table
 }
 func (t *TableMem[T]) init() {
