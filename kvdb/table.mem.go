@@ -198,7 +198,7 @@ func (t *TableMem[T]) SearchByIdx(idxname string, value any, filter func(t T) bo
 // Search implements Table.
 func (t *TableMem[T]) search(isMain bool, key string, filter func(t T) bool, start_end ...int) (list []T) {
 	var start, end int = 0, 1
-	if len(start_end) == 1 {
+	if len(start_end) >= 1 {
 		start = start_end[0]
 		if start < 0 {
 			start = 0
@@ -211,14 +211,19 @@ func (t *TableMem[T]) search(isMain bool, key string, filter func(t T) bool, sta
 		}
 	}
 	size := end - start
+	curIdx := 0
 	t.scan(isMain, key, &pebble.IterOptions{
-		LowerBound: []byte(fmt.Sprintf("%s", key)),
+		LowerBound: []byte(key),
 		//UpperBound: []byte(fmt.Sprintf("%s\xff", key)),
 	}, func(v T) bool {
 		/* 	if !strings.HasPrefix() {
 			return false
 		} */
 		if filter(v) {
+			if curIdx < start {
+				curIdx++
+				return true
+			}
 			list = append(list, v)
 		}
 		if len(list) >= size {
