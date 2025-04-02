@@ -233,6 +233,10 @@ func (t *TableMem[T]) search(isMain bool, key string, filter func(t T) bool, sta
 	})
 	return list
 }
+func (t *TableMem[T]) Close() {
+	t.mdb.Close()
+	t.idb.Close()
+}
 
 // Scan implements Table.
 func (t *TableMem[T]) Scan(handle func(v T) bool) {
