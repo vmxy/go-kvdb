@@ -143,14 +143,21 @@ func (t *TableMem[T]) Update(id string, v *T) error {
 			value := rentity.FieldByName(idx.Field)
 			if !value.IsZero() {
 				key := buildIndexKey(idx.Name, value.String(), id)
-				t.idb.Set([]byte(key), []byte(id), &writerOpt)
-				if oldVal := getValue(o, idx.Field); oldVal.IsValid() && !oldVal.IsZero() {
+				if oldVal := getValue(o, idx.Field); isSameValue(value, oldVal) {
+					continue
+				} else if oldVal.IsValid() && !oldVal.IsZero() {
 					key := buildIndexKey(idx.Name, oldVal.String(), id)
 					t.idb.Delete([]byte(key), pebble.Sync)
 				}
+				/* 	if oldVal := getValue(o, idx.Field); oldVal.IsValid() && !oldVal.IsZero() {
+					key := buildIndexKey(idx.Name, oldVal.String(), id)
+					t.idb.Delete([]byte(key), pebble.Sync)
+					fmt.Println("delete idx key", idx.Name, idx.Field, oldVal, value)
+				} */
+				t.idb.Set([]byte(key), []byte(id), &writerOpt)
 			}
 		}
-		concatEntity[*T](&o, v)
+		concatEntity(&o, v)
 		if json, err := marshal(v); err == nil {
 			t.mdb.Set([]byte(id), json, pebble.Sync)
 			if _, ok := t.cache.Get(id); ok {

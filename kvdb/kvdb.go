@@ -117,6 +117,12 @@ func getRefTypeElem(entity any) reflect.Type {
 	}
 	return v
 }
+func isSameValue(v1 reflect.Value, v2 reflect.Value) bool {
+	if v1.Type() != v2.Type() {
+		return false
+	}
+	return reflect.DeepEqual(v1.Interface(), v2.Interface())
+}
 func buildIndexKey(name string, values ...string) string {
 	return fmt.Sprintf("%s-%s", name, strings.Join(values, "_"))
 }
