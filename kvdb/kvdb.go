@@ -24,7 +24,7 @@ type Table[T Entity] interface {
 	Get(id string) (v T, ok bool)                                                          //获取,根据id
 	Gets(ids ...string) (list []T)                                                         //获取列表,多个id
 	Insert(id string, v *T) error                                                          //插入
-	Update(id string, v *T) error                                                          //更新
+	Update(id string, v H) error                                                           //更新
 	Delete(ids ...string)                                                                  //删除
 	Search(id string, filter func(v T) bool, start_end ...int) (list []T)                  //搜索
 	SearchByIdx(idx string, value any, filter func(v T) bool, start_end ...int) (list []T) //搜索
@@ -72,21 +72,41 @@ func createIndexs[T any]() map[string]IndexInfo {
 	}
 	return mapidxs
 }
-func concatEntity[T any](oldVal T, newVal T) T {
+func concatEntity[T any](oldVal T, newVal H) H {
 	rstruct := getRefTypeElem(oldVal)
-	rvalue := getRefValueElem(newVal)
+
+	//rvalue := getRefValueElem(newVal)
 	for i := range rstruct.NumField() {
 		field := rstruct.Field(i)
-		valueNew := rvalue.FieldByName(field.Name)
+		/* valueNew := rvalue.FieldByName(field.Name)
 		oldValue := getValue(oldVal, field.Name)
 		if valueNew.IsZero() && valueNew.CanSet() {
+			valueNew.IsValid()
 			valueNew.Set(oldValue)
-			//value.Set(getValue(oldVal, field.Name))
+		} */
+		oldValue := getValue(oldVal, field.Name)
+		if _, ok := newVal[field.Name]; !ok {
+			newVal[field.Name] = getTypeRealValue(oldValue)
 		}
 	}
 	return newVal
 }
-
+func getTypeRealValue(v reflect.Value) any {
+	switch v.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return v.Int()
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return v.Uint()
+	case reflect.Float32, reflect.Float64:
+		return v.Float()
+	case reflect.Bool:
+		return v.Bool()
+	case reflect.String:
+		return v.String()
+	default:
+		return v.Interface()
+	}
+}
 func getValue(entity any, field string) reflect.Value {
 	rvalue := getRefValueElem(entity)
 	if rvalue.IsValid() {
@@ -117,12 +137,18 @@ func getRefTypeElem(entity any) reflect.Type {
 	}
 	return v
 }
-func isSameValue(v1 reflect.Value, v2 reflect.Value) bool {
+func isSameValueRef(v1 reflect.Value, v2 reflect.Value) bool {
 	if v1.Type() != v2.Type() {
 		return false
 	}
 	return reflect.DeepEqual(v1.Interface(), v2.Interface())
 }
+func isSameValue(v1 any, v2 reflect.Value) bool {
+	return reflect.DeepEqual(v1, v2.Interface())
+}
 func buildIndexKey(name string, values ...string) string {
 	return fmt.Sprintf("%s-%s", name, strings.Join(values, "_"))
 }
+
+// H is a shortcut for map[string]any
+type H map[string]any

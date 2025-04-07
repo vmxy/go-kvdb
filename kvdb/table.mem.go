@@ -136,39 +136,56 @@ func (t *TableMem[T]) Insert(id string, v *T) error {
 }
 
 // Update implements Table.
-func (t *TableMem[T]) Update(id string, v *T) error {
-	if o, ok := t.Get(id); ok {
-		rentity := getRefValueElem(v)
-		for _, idx := range t.indexs {
-			value := rentity.FieldByName(idx.Field)
-			if !value.IsZero() {
-				key := buildIndexKey(idx.Name, value.String(), id)
-				if oldVal := getValue(o, idx.Field); isSameValue(value, oldVal) {
-					continue
-				} else if oldVal.IsValid() && !oldVal.IsZero() {
-					key := buildIndexKey(idx.Name, oldVal.String(), id)
-					t.idb.Delete([]byte(key), pebble.Sync)
-				}
-				/* 	if oldVal := getValue(o, idx.Field); oldVal.IsValid() && !oldVal.IsZero() {
-					key := buildIndexKey(idx.Name, oldVal.String(), id)
-					t.idb.Delete([]byte(key), pebble.Sync)
-					fmt.Println("delete idx key", idx.Name, idx.Field, oldVal, value)
-				} */
-				t.idb.Set([]byte(key), []byte(id), &writerOpt)
-			}
-		}
-		concatEntity(&o, v)
-		if json, err := marshal(v); err == nil {
-			t.mdb.Set([]byte(id), json, pebble.Sync)
-			if _, ok := t.cache.Get(id); ok {
-				t.cache.Set(id, v, 0)
-			}
-			return nil
-		} else {
-			return err
+func (t *TableMem[T]) Update(id string, entity H) error {
+	o, ok := t.Get(id)
+	if !ok {
+		return errors.New("exist " + id)
+	}
+	rstruct := getRefTypeElem(o)
+	for i := range rstruct.NumField() {
+		field := rstruct.Field(i)
+		if _, ok := entity[field.Name]; !ok {
+			delete(entity, field.Name)
 		}
 	}
-	return errors.New("exist " + id)
+	/* rentity := getRefValueElem(v)
+	for _, idx := range t.indexs {
+		value := rentity.FieldByName(idx.Field)
+		if !value.IsZero() {
+			key := buildIndexKey(idx.Name, value.String(), id)
+			if oldVal := getValue(o, idx.Field); isSameValue(value, oldVal) {
+				continue
+			} else if oldVal.IsValid() && !oldVal.IsZero() {
+				key := buildIndexKey(idx.Name, oldVal.String(), id)
+				t.idb.Delete([]byte(key), pebble.Sync)
+			}
+			t.idb.Set([]byte(key), []byte(id), &writerOpt)
+		}
+	} */
+	//rentity := getRefValueElem(o)
+	for _, idx := range t.indexs {
+		if val, ok := entity[idx.Field]; ok {
+			key := buildIndexKey(idx.Name, fmt.Sprintf("%v", val), id)
+			if oldVal := getValue(o, idx.Field); isSameValue(val, oldVal) {
+				continue
+			} else if oldVal.IsValid() && !oldVal.IsZero() {
+				key := buildIndexKey(idx.Name, oldVal.String(), id)
+				t.idb.Delete([]byte(key), pebble.Sync)
+			}
+			t.idb.Set([]byte(key), []byte(id), &writerOpt)
+		}
+	}
+
+	entity = concatEntity(&o, entity)
+	if json, err := marshal(entity); err == nil {
+		t.mdb.Set([]byte(id), json, pebble.Sync)
+		if _, ok := t.cache.Get(id); ok {
+			t.cache.Set(id, entity, 0)
+		}
+		return nil
+	} else {
+		return err
+	}
 }
 
 // Delete implements Table.

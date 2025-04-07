@@ -9,10 +9,12 @@ import (
 )
 
 type UserDemo struct {
-	ID   string
-	Name string `kvdb:"index:idx_name"`
-	Age  int
-	Addr string
+	ID    string
+	Name  string `kvdb:"index:idx_name"`
+	Age   int
+	Addr  string
+	OK    bool
+	Count int64
 }
 
 func getAppDir(dirs ...string) string {
@@ -46,6 +48,30 @@ func TestMem(t *testing.T) {
 func TestMemInsert(t *testing.T) {
 	var tableMem = initdb()
 	fmt.Println("test===insert")
+	// 正确做法 - 初始化 map
+	m := H{"Age": 11}
+	m["Name"] = "xx"
+	_, err := marshal(m)
+	fmt.Println("============err", err)
+	user := UserDemo{
+		ID:    "911",
+		Name:  "leo",
+		Age:   11,
+		Addr:  "address no.911",
+		OK:    false,
+		Count: 33,
+	}
+	if err := tableMem.Insert(user.ID, &user); err != nil {
+		fmt.Println("err===", err)
+	}
+	u, ok := tableMem.Get(user.ID)
+	fmt.Println("get1===", u.ID, u.Name, ok, u)
+
+	tableMem.Update(user.ID, H{"Name": "", "Age": 19})
+
+	u, ok = tableMem.Get(user.ID)
+	fmt.Println("get2===", u.ID, u.Name, ok, u)
+
 	for i := range 100 {
 		user := UserDemo{
 			ID:   fmt.Sprintf("%d", i),
@@ -86,8 +112,8 @@ func TestMemInsert(t *testing.T) {
 	///
 	for i, v := range tableMem.Gets(ids...) {
 		fmt.Println("test update1 ", v)
-		x := tableMem.Update(v.ID, &UserDemo{
-			Name: fmt.Sprintf("liming-%d", (i * 3)),
+		x := tableMem.Update(v.ID, H{
+			"Name": fmt.Sprintf("liming-%d", (i * 3)),
 		})
 		v2, ok := tableMem.Get(v.ID)
 		fmt.Println("test update2 ", v2, ok, x)
