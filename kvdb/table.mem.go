@@ -173,9 +173,13 @@ func (t *TableMem[T]) Update(id string, entity H) error {
 			key := buildIndexKey(idx.Name, fmt.Sprintf("%v", val), id)
 			if oldVal := getValue(o, idx.Field); isSameValue(val, oldVal) {
 				continue
-			} else if oldVal.IsValid() && !oldVal.IsZero() {
-				key := buildIndexKey(idx.Name, oldVal.String(), id)
-				t.idb.Delete([]byte(key), pebble.Sync)
+			} else if oldVal.IsValid() {
+				if oldVal.Kind() != reflect.Ptr ||
+					(oldVal.Kind() == reflect.Ptr && !oldVal.IsNil()) {
+					key := buildIndexKey(idx.Name, oldVal.String(), id)
+					t.idb.Delete([]byte(key), pebble.Sync)
+					fmt.Println("delete idx", idx.Name, key)
+				}
 			}
 			t.idb.Set([]byte(key), []byte(id), &writerOpt)
 		}
