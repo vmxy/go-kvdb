@@ -76,7 +76,7 @@ func TestMemInsert(t *testing.T) {
 	fmt.Println("get2===", u.ID, u.Name, ok, u)
 
 	for i := range 20 {
-		name := fmt.Sprintf("leo-%d", i)
+		name := fmt.Sprintf("leox%d", i)
 		if i%10 == 1 {
 			name = ""
 		}
@@ -105,20 +105,20 @@ func TestMemInsert(t *testing.T) {
 	}
 
 	//
-	/* 	for i, v := range tableMem.Search("3", func(v UserDemo) bool { return v.Age < 46 }, 0, 10) {
-	   		fmt.Println("test search main ", i, v)
-	   	}
+	for i, v := range tableMem.Search("3", func(v UserDemo) bool { return v.Age < 46 }, 0, 10) {
+		fmt.Println("test search main ", i, v)
+	}
 
-	   	//
-	   	for i, v := range tableMem.SearchByIdx("idx_name", "leo", func(v UserDemo) bool { return v.Age%2 == 0 }, 0, 5) {
-	   		fmt.Println("test search idx ", i, v)
-	   	}
-	   	for i, v := range tableMem.SearchByIdx("idx_name", "", func(v UserDemo) bool { return v.Age%2 == 0 }, 0, 5) {
-	   		fmt.Println("test search idx empty==> ", i, v)
-	   	} */
+	//
+	for i, v := range tableMem.SearchByIdx("idx_name", "leo", func(v UserDemo) bool { return v.Age%2 == 0 }, 0, 5) {
+		fmt.Println("test search idx ", i, v)
+	}
+	for i, v := range tableMem.SearchByIdx("idx_name", "", func(v UserDemo) bool { return v.Age%2 == 0 }, 0, 5) {
+		fmt.Println("test search idx empty==> ", i, v)
+	}
 	fmt.Println("================== test update =================")
-	/*ids := []string{"2", "8", "5", "9"}
-	 ///
+	ids := []string{"2", "8", "5", "9"}
+	///
 	for i, v := range tableMem.Gets(ids...) {
 		fmt.Println("test update1 ", v)
 		addr := v.Addr
@@ -131,7 +131,8 @@ func TestMemInsert(t *testing.T) {
 		})
 		v2, ok := tableMem.Get(v.ID)
 		fmt.Println("test update2 ", v2, ok, x)
-	} */
+	}
+	time.Sleep(1 * time.Second)
 	if v, ok := tableMem.Get("2"); ok {
 		fmt.Println("v1 ", v.String())
 		tableMem.Update(v.ID, H{"Name": ""})
@@ -142,7 +143,7 @@ func TestMemInsert(t *testing.T) {
 
 		tableMem.Update(v.ID, H{"Name": "33"})
 		time.Sleep(1 * time.Second)
-		for i, x := range tableMem.SearchByIdx("idx_name", "*", func(v UserDemo) bool { return true }, 0, 10) {
+		for i, x := range tableMem.SearchByIdx("idx_name", "", func(v UserDemo) bool { return true }, 0, 10) {
 			fmt.Println("v3 get ", i, x.String())
 		}
 	}

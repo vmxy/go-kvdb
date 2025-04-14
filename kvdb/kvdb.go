@@ -146,8 +146,11 @@ func isSameValueRef(v1 reflect.Value, v2 reflect.Value) bool {
 func isSameValue(v1 any, v2 reflect.Value) bool {
 	return reflect.DeepEqual(v1, v2.Interface())
 }
+
+const _Separator = string(byte(0)) // 或直接写 `"\x00"`
 func buildIndexKey(name string, values ...string) string {
-	return fmt.Sprintf("%s-%s", name, strings.Join(values, "_"))
+
+	return fmt.Sprintf("%s-%s", name, strings.Join(values, _Separator))
 }
 
 // H is a shortcut for map[string]any

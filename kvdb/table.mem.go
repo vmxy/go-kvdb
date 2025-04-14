@@ -128,7 +128,6 @@ func (t *TableMem[T]) Insert(id string, v *T) error {
 					}
 					key := buildIndexKey(idx.Name, value.String(), id)
 					t.idb.Set([]byte(key), []byte(id), pebble.Sync)
-					fmt.Println("insert index", idx.Name, key)
 				}
 			}
 			return nil
@@ -178,7 +177,6 @@ func (t *TableMem[T]) Update(id string, entity H) error {
 					(oldVal.Kind() == reflect.Ptr && !oldVal.IsNil()) {
 					key := buildIndexKey(idx.Name, oldVal.String(), id)
 					t.idb.Delete([]byte(key), pebble.Sync)
-					fmt.Println("delete idx", idx.Name, key)
 				}
 			}
 			t.idb.Set([]byte(key), []byte(id), &writerOpt)
@@ -188,9 +186,7 @@ func (t *TableMem[T]) Update(id string, entity H) error {
 	entity = concatEntity(&o, entity)
 	if json, err := marshal(entity); err == nil {
 		t.mdb.Set([]byte(id), json, pebble.Sync)
-		if _, ok := t.cache.Get(id); ok {
-			t.cache.Set(id, entity, 0)
-		}
+		t.cache.Del(id)
 		return nil
 	} else {
 		return err
@@ -216,20 +212,20 @@ func (t *TableMem[T]) Delete(ids ...string) {
 
 // Search implements Table.
 func (t *TableMem[T]) Search(key string, filter func(t T) bool, start_end ...int) (list []T) {
-	return t.search(true, key, filter, start_end...)
+	return t.search(true, key, key, filter, start_end...)
 }
 
 // SearchByIdx implements Table.
 func (t *TableMem[T]) SearchByIdx(idxname string, value any, filter func(t T) bool, start_end ...int) (list []T) {
 	if i, ok := t.indexs[idxname]; ok {
 		key := buildIndexKey(i.Name, fmt.Sprintf("%v", value))
-		return t.search(false, key, filter, start_end...)
+		return t.search(false, key, value, filter, start_end...)
 	}
 	return make([]T, 0)
 }
 
 // Search implements Table.
-func (t *TableMem[T]) search(isMain bool, key string, filter func(t T) bool, start_end ...int) (list []T) {
+func (t *TableMem[T]) search(isMain bool, searchKey string, value any, filter func(t T) bool, start_end ...int) (list []T) {
 	var start, end int = 0, 1
 	if len(start_end) >= 1 {
 		start = start_end[0]
@@ -245,13 +241,24 @@ func (t *TableMem[T]) search(isMain bool, key string, filter func(t T) bool, sta
 	}
 	size := end - start
 	curIdx := 0
-	t.scan(isMain, key, &pebble.IterOptions{
-		LowerBound: []byte(key),
+	t.scan(isMain, searchKey, &pebble.IterOptions{
+		LowerBound: []byte(searchKey),
 		//UpperBound: []byte(fmt.Sprintf("%s\xff", key)),
-	}, func(v T) bool {
+	}, func(rkey string, v T) bool {
 		/* 	if !strings.HasPrefix() {
 			return false
 		} */
+		if value == "" {
+			vs := strings.Split(rkey, "-")
+			if len(vs) < 2 {
+				t.mdb.Delete([]byte(rkey), nil)
+				t.idb.Delete([]byte(rkey), nil)
+				return false
+			}
+			if vs1 := strings.Split(vs[1], _Separator); vs1[0] != value {
+				return false
+			}
+		}
 		if filter(v) {
 			if curIdx < start {
 				curIdx++
@@ -273,9 +280,9 @@ func (t *TableMem[T]) Close() {
 
 // Scan implements Table.
 func (t *TableMem[T]) Scan(handle func(v T) bool) {
-	t.scan(true, "", nil, handle)
+	t.scan(true, "", nil, func(key string, v T) bool { return handle(v) })
 }
-func (t *TableMem[T]) scan(isMain bool, key string, op *pebble.IterOptions, handle func(v T) bool) {
+func (t *TableMem[T]) scan(isMain bool, key string, op *pebble.IterOptions, handle func(key string, v T) bool) {
 	var db *pebble.DB = is(isMain, t.mdb, t.idb)
 	// 遍历所有键值
 	iter, _ := db.NewIter(op)
@@ -288,7 +295,7 @@ func (t *TableMem[T]) scan(isMain bool, key string, op *pebble.IterOptions, hand
 		var id string = is(isMain, ckey, string(iter.Value()))
 		if v, ok := t.cache.Get(id); ok {
 			if v2, o2 := v.(T); o2 {
-				if o := handle(v2); o {
+				if o := handle(ckey, v2); o {
 					continue
 				} else {
 					break
@@ -299,7 +306,7 @@ func (t *TableMem[T]) scan(isMain bool, key string, op *pebble.IterOptions, hand
 		}
 		if isMain {
 			if v, err := unmarshal[T](iter.Value()); err == nil {
-				if o := handle(v); o {
+				if o := handle(ckey, v); o {
 					continue
 				} else {
 					break
@@ -307,7 +314,7 @@ func (t *TableMem[T]) scan(isMain bool, key string, op *pebble.IterOptions, hand
 			}
 		} else {
 			if v, ok := t.Get(id); ok {
-				if o := handle(v); o {
+				if o := handle(ckey, v); o {
 					continue
 				} else {
 					break
