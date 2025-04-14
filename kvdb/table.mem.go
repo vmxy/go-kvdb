@@ -241,6 +241,10 @@ func (t *TableMem[T]) search(isMain bool, searchKey string, value any, filter fu
 	}
 	size := end - start
 	curIdx := 0
+	isSearchAll := value == "*"
+	if isSearchAll {
+		searchKey = searchKey[0 : len(searchKey)-1]
+	}
 	t.scan(isMain, searchKey, &pebble.IterOptions{
 		LowerBound: []byte(searchKey),
 		//UpperBound: []byte(fmt.Sprintf("%s\xff", key)),
@@ -248,7 +252,7 @@ func (t *TableMem[T]) search(isMain bool, searchKey string, value any, filter fu
 		/* 	if !strings.HasPrefix() {
 			return false
 		} */
-		if value == "" {
+		if !isSearchAll && value == "" {
 			vs := strings.Split(rkey, "-")
 			if len(vs) < 2 {
 				t.mdb.Delete([]byte(rkey), nil)
