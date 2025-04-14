@@ -73,9 +73,13 @@ func TestMemInsert(t *testing.T) {
 	fmt.Println("get2===", u.ID, u.Name, ok, u)
 
 	for i := range 100 {
+		name := fmt.Sprintf("leo-%d", i)
+		if i%10 == 1 {
+			name = ""
+		}
 		user := UserDemo{
 			ID:   fmt.Sprintf("%d", i),
-			Name: "leo",
+			Name: name,
 			Age:  11 + i,
 			Addr: fmt.Sprintf("address no.%d", i),
 		}
@@ -103,10 +107,12 @@ func TestMemInsert(t *testing.T) {
 	}
 
 	//
-	for i, v := range tableMem.SearchByIdx("idx_name", "leo", func(v UserDemo) bool { return v.Age%2 == 0 }, 27, 20) {
+	for i, v := range tableMem.SearchByIdx("idx_name", "leo", func(v UserDemo) bool { return v.Age%2 == 0 }, 0, 20) {
 		fmt.Println("test search idx ", i, v)
 	}
-
+	for i, v := range tableMem.SearchByIdx("idx_name", "", func(v UserDemo) bool { return v.Age%2 == 0 }, 0, 20) {
+		fmt.Println("test search idx empty==> ", i, v)
+	}
 	fmt.Println("================== test update =================")
 	ids := []string{"2", "8", "5", "9"}
 	///

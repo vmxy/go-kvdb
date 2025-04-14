@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"github.com/cockroachdb/pebble"
@@ -121,9 +122,13 @@ func (t *TableMem[T]) Insert(id string, v *T) error {
 			rentity := getRefValueElem(v)
 			for _, idx := range t.indexs {
 				value := rentity.FieldByName(idx.Field)
-				if !value.IsZero() {
+				if value.IsValid() {
+					if value.Kind() == reflect.Ptr && value.IsNil() {
+						continue
+					}
 					key := buildIndexKey(idx.Name, value.String(), id)
 					t.idb.Set([]byte(key), []byte(id), pebble.Sync)
+					fmt.Println("insert index", idx.Name, key)
 				}
 			}
 			return nil
