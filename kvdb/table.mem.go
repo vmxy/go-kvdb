@@ -3,9 +3,12 @@ package kvdb
 import (
 	"errors"
 	"fmt"
+	"os"
+	"os/signal"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"syscall"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/vfs"
@@ -73,6 +76,16 @@ func (t *TableMem[T]) init() {
 		}); err == nil {
 			t.idb = db
 		}
+		sigs := make(chan os.Signal, 1)
+		signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+		go func() {
+			<-sigs
+			t.mdb.Flush()
+			t.idb.Flush()
+			t.mdb.Close()
+			t.idb.Close()
+			os.Exit(0)
+		}()
 	}
 
 }
