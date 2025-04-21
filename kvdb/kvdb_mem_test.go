@@ -12,7 +12,7 @@ type UserDemo struct {
 	ID    string
 	Name  string `kvdb:"index:idx_name"`
 	Age   int
-	Addr  string `kvdb:"index:idx_addr|r"`
+	Addr  string `kvdb:"index:idx_addr"`
 	OK    bool
 	Count int64
 }
@@ -143,7 +143,7 @@ func TestMemInsert(t *testing.T) {
 
 		tableMem.Update(v.ID, H{"Name": "33"})
 		time.Sleep(1 * time.Second)
-		for i, x := range tableMem.SearchByIdx("idx_name", "", func(v UserDemo) bool { return true }, 0, 10) {
+		for i, x := range tableMem.SearchByIdx("idx_name", "*", func(v UserDemo) bool { return true }, 0, 10) {
 			fmt.Println("v3 get ", i, x.String())
 		}
 	}
