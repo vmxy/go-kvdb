@@ -12,7 +12,7 @@ type UserDemo struct {
 	ID    string
 	Name  string `kvdb:"index:idx_name"`
 	Age   int
-	Addr  string
+	Addr  string `kvdb:"index:idx_addr|r"`
 	OK    bool
 	Count int64
 }

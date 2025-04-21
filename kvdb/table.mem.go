@@ -139,7 +139,7 @@ func (t *TableMem[T]) Insert(id string, v *T) error {
 					if value.Kind() == reflect.Ptr && value.IsNil() {
 						continue
 					}
-					key := buildIndexKey(idx.Name, value.String(), id)
+					key := buildIndexKey(idx, value.String(), id)
 					t.idb.Set([]byte(key), []byte(id), pebble.Sync)
 				}
 			}
@@ -182,13 +182,13 @@ func (t *TableMem[T]) Update(id string, entity H) error {
 	//rentity := getRefValueElem(o)
 	for _, idx := range t.indexs {
 		if val, ok := entity[idx.Field]; ok {
-			key := buildIndexKey(idx.Name, fmt.Sprintf("%v", val), id)
+			key := buildIndexKey(idx, fmt.Sprintf("%v", val), id)
 			if oldVal := getValue(o, idx.Field); isSameValue(val, oldVal) {
 				continue
 			} else if oldVal.IsValid() {
 				if oldVal.Kind() != reflect.Ptr ||
 					(oldVal.Kind() == reflect.Ptr && !oldVal.IsNil()) {
-					key := buildIndexKey(idx.Name, oldVal.String(), id)
+					key := buildIndexKey(idx, oldVal.String(), id)
 					t.idb.Delete([]byte(key), pebble.Sync)
 				}
 			}
@@ -213,7 +213,7 @@ func (t *TableMem[T]) Delete(ids ...string) {
 			rentity := getRefValueElem(v)
 			for _, idx := range t.indexs {
 				value := rentity.FieldByName(idx.Name)
-				key := buildIndexKey(idx.Name, value.String())
+				key := buildIndexKey(idx, value.String())
 				//itxn.Delete([]byte(key))
 				t.idb.Delete([]byte(key), pebble.Sync)
 			}
@@ -231,7 +231,7 @@ func (t *TableMem[T]) Search(key string, filter func(t T) bool, start_end ...int
 // SearchByIdx implements Table.
 func (t *TableMem[T]) SearchByIdx(idxname string, value any, filter func(t T) bool, start_end ...int) (list []T) {
 	if i, ok := t.indexs[idxname]; ok {
-		key := buildIndexKey(i.Name, fmt.Sprintf("%v", value))
+		key := buildIndexKey(i, fmt.Sprintf("%v", value))
 		return t.search(false, key, value, filter, start_end...)
 	}
 	return make([]T, 0)

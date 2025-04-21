@@ -2,8 +2,10 @@ package kvdb
 
 import (
 	"errors"
+	"time"
 
 	"github.com/vmihailenco/msgpack/v5"
+	"golang.org/x/exp/rand"
 )
 
 /*
@@ -35,4 +37,15 @@ func is[T any](ok bool, yes T, no T) T {
 	} else {
 		return no
 	}
+}
+
+const charset = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+func randomString(length int) string {
+	rand.Seed(uint64(time.Now().UnixNano())) // 初始化随机种子
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
 }
