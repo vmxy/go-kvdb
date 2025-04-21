@@ -148,8 +148,12 @@ func isSameValue(v1 any, v2 reflect.Value) bool {
 }
 
 const _Separator = string(byte(0)) // 或直接写 `"\x00"`
-func buildIndexKey(index IndexInfo, values ...string) string {
-	return fmt.Sprintf("%s-%s", index.Name, strings.Join(values, _Separator))
+func buildIndexKey(index IndexInfo, value any, args ...string) string {
+	sv := fmt.Sprintf("%v", value)
+	vs := []string{}
+	vs = append(vs, sv)
+	vs = append(vs, args...)
+	return fmt.Sprintf("%s-%s", index.Name, strings.Join(vs, _Separator))
 }
 
 // H is a shortcut for map[string]any
