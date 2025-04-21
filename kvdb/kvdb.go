@@ -8,10 +8,9 @@ import (
 )
 
 type IndexInfo struct {
-	Name   string
-	Field  string
-	Type   string
-	Random bool //随机
+	Name  string
+	Field string
+	Type  string
 }
 type Entity interface {
 }
@@ -51,22 +50,10 @@ func createIndexs[T any]() map[string]IndexInfo {
 		} else if strings.Contains(tag, "index:") {
 			indexName := strings.Split(tag, "index:")[1]
 			indexName = regexp.MustCompile(`;.*$`).ReplaceAllString(indexName, "")
-			random := false
-			if vs := strings.Split(indexName, "|"); len(vs) >= 2 {
-				indexName = vs[0]
-				for _, f := range vs[1:] {
-					switch f {
-					case "r":
-						random = true
-					}
-				}
-			}
-			fmt.Printf("create idx name=%s random=%t %s\r\n", indexName, random, tag)
 			indexInfo := IndexInfo{
-				Name:   indexName,
-				Field:  field.Name,
-				Type:   field.Type.String(),
-				Random: random,
+				Name:  indexName,
+				Field: field.Name,
+				Type:  field.Type.String(),
 			}
 			indexes = append(indexes, indexInfo)
 		} /* else if strings.Contains(tag, "uniqueIndex:") {
@@ -162,11 +149,7 @@ func isSameValue(v1 any, v2 reflect.Value) bool {
 
 const _Separator = string(byte(0)) // 或直接写 `"\x00"`
 func buildIndexKey(index IndexInfo, values ...string) string {
-	if index.Random {
-		return fmt.Sprintf("%s_%s-%s", index.Name, randomString(3), strings.Join(values, _Separator))
-	} else {
-		return fmt.Sprintf("%s-%s", index.Name, strings.Join(values, _Separator))
-	}
+	return fmt.Sprintf("%s-%s", index.Name, strings.Join(values, _Separator))
 }
 
 // H is a shortcut for map[string]any
